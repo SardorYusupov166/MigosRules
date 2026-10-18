@@ -3,7 +3,6 @@ package dev.migosrules;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.OrderedText;
 import net.minecraft.text.Text;
@@ -20,24 +19,31 @@ public final class RulesScreen extends Screen {
     private record Block(String text, String url, String title, List<OrderedText> lines) {}
     public RulesScreen(Screen parent) { super(Text.literal("Правила MigosMC")); this.parent = parent; }
     private int split() { return Math.max(115, Math.min(185, width / 3)); }
+    private int footerY() { return height - 28; }
+    private int footerWidth() { return Math.max(1, (width - 28) / 3); }
+    private int footerX(int index) { return 8 + index * (footerWidth() + 6); }
+    private boolean inside(double x, double y, int bx, int by, int bw, int bh) {
+        return x >= bx && x < bx + bw && y >= by && y < by + bh;
+    }
     @Override protected void init() {
+        RulesTheme.load();
         search = new TextFieldWidget(textRenderer, 8, 27, Math.max(80, width - 115), 20, Text.literal("Поиск правил"));
         search.setMaxLength(180);
         search.setPlaceholder(Text.literal("Номер пункта или текст…"));
         search.setText(query);
         search.setChangedListener(value -> { query = value; scroll = 0; rebuild(); });
         addDrawableChild(search);
-        addDrawableChild(ButtonWidget.builder(Text.literal("Обновить"), b -> RulesRepository.update()).dimensions(width - 100, 27, 92, 20).build());
-        int bw = Math.max(50, Math.min(100, (width - 32) / 3));
-        addDrawableChild(ButtonWidget.builder(Text.literal("Назад"), b -> close()).dimensions(8, height - 28, bw, 20).build());
-        addDrawableChild(ButtonWidget.builder(Text.literal("Копировать"), b -> {
-            if (!selected.isEmpty()) { client.keyboard.setClipboard(selected); feedback = "Пункт скопирован"; }
-        }).dimensions(16 + bw, height - 28, bw, 20).build());
-        addDrawableChild(ButtonWidget.builder(Text.literal("Источник"), b -> {
-            if (!source.isEmpty()) Screen.handleOpenUri(client, this, URI.create(source));
-        }).dimensions(24 + bw * 2, height - 28, bw, 20).build());
         shown = RulesRepository.snapshot;
         rebuild();
+    }
+
+    private void button(DrawContext c, String label, int x, int y, int w, int h, int mx, int my, boolean enabled) {
+        boolean hovered = enabled && inside(mx, my, x, y, w, h);
+        int background = hovered ? RulesTheme.accent() : 0xD625282D;
+        c.fill(x, y, x + w, y + h, background);
+        c.fill(x, y + h - 2, x + w, y + h, RulesTheme.bright());
+        int color = enabled ? (hovered ? RulesTheme.text() : 0xFFD3D5D6) : 0xFF777D82;
+        c.drawCenteredTextWithShadow(textRenderer, label, x + w / 2, y + (h - 8) / 2, color);
     }
     private void rebuild() {
         var topics = RulesRepository.snapshot.topics();
@@ -65,18 +71,26 @@ public final class RulesScreen extends Screen {
     @Override public void render(DrawContext c, int mx, int my, float delta) {
         if (shown != RulesRepository.snapshot) { shown = RulesRepository.snapshot; rebuild(); }
         c.fill(0, 0, width, height, 0xF2161B20);
-        c.drawTextWithShadow(textRenderer, "Правила MigosMC • mlpgod", 8, 9, 0xFFFFD278);
+        c.fill(0, 0, width, 2, RulesTheme.bright());
+        c.drawTextWithShadow(textRenderer, "Правила MigosMC • mlpgod", 8, 9, RulesTheme.text());
         c.drawTextWithShadow(textRenderer, textRenderer.trimToWidth(RulesRepository.status, width - 16), 8, 52, 0xFFAAAAAA);
         int bottom = height - 42;
         String tooltip = null;
+        button(c, "Обновить", width - 100, 27, 92, 20, mx, my, true);
+        int footerWidth = footerWidth();
+        button(c, "Назад", footerX(0), footerY(), footerWidth, 20, mx, my, true);
+        button(c, "Копировать", footerX(1), footerY(), footerWidth, 20, mx, my, !selected.isEmpty());
+        button(c, "Источник", footerX(2), footerY(), footerWidth, 20, mx, my, !source.isEmpty());
         c.enableScissor(6, 67, split() - 3, bottom);
         var topics = shown.topics();
         for (int i = -1; i < topics.size(); i++) {
             int y = 69 + (i + 1) * 26 - sectionScroll;
             if (y + 24 < 67 || y > bottom) continue;
-            c.fill(7, y, split() - 5, y + 24, section == i ? 0xFF684E31 : 0xFF262D35);
+            c.fill(7, y, split() - 5, y + 24, section == i ? RulesTheme.accent() : 0xFF262D35);
+            if (section == i) c.fill(7, y + 21, split() - 5, y + 24, RulesTheme.bright());
             String label = i == -1 ? "Все разделы" : topics.get(i).title();
-            c.drawTextWithShadow(textRenderer, textRenderer.trimToWidth(label, split() - 22), 12, y + 8, 0xFFFFFFFF);
+            c.drawTextWithShadow(textRenderer, textRenderer.trimToWidth(label, split() - 22), 12, y + 8,
+                section == i ? RulesTheme.text() : 0xFFFFFFFF);
             if (mx >= 7 && mx < split() - 5 && my >= y && my < y + 24 && my >= 67 && my < bottom) tooltip = label;
         }
         c.disableScissor();
@@ -86,8 +100,9 @@ public final class RulesScreen extends Screen {
             int bh = 20 + b.lines().size() * 11;
             if (y + bh >= 67 && y < bottom) {
                 boolean active = selected.equals(b.text()) && source.equals(b.url());
-                c.fill(split() + 2, y, width - 8, y + bh, active ? 0xFF4A4030 : 0xFF222A32);
-                c.drawTextWithShadow(textRenderer, textRenderer.trimToWidth(b.title(), width - split() - 26), split() + 8, y + 5, 0xFFFFD278);
+                c.fill(split() + 2, y, width - 8, y + bh, active ? RulesTheme.accent() : 0xFF222A32);
+                if (active) c.fill(split() + 2, y, split() + 4, y + bh, RulesTheme.bright());
+                c.drawTextWithShadow(textRenderer, textRenderer.trimToWidth(b.title(), width - split() - 26), split() + 8, y + 5, RulesTheme.text());
                 int ly = y + 17;
                 for (OrderedText line : b.lines()) { c.drawTextWithShadow(textRenderer, line, split() + 8, ly, 0xFFEEEEEE); ly += 11; }
             }
@@ -101,6 +116,19 @@ public final class RulesScreen extends Screen {
     }
     @Override public boolean mouseClicked(Click click, boolean doubled) {
         if (super.mouseClicked(click, doubled)) return true;
+        if (click.button() == 0) {
+            double x = click.x(), y = click.y();
+            if (inside(x, y, width - 100, 27, 92, 20)) { RulesRepository.update(); return true; }
+            if (inside(x, y, footerX(0), footerY(), footerWidth(), 20)) { close(); return true; }
+            if (inside(x, y, footerX(1), footerY(), footerWidth(), 20)) {
+                if (!selected.isEmpty()) { client.keyboard.setClipboard(selected); feedback = "Пункт скопирован"; }
+                return true;
+            }
+            if (inside(x, y, footerX(2), footerY(), footerWidth(), 20)) {
+                if (!source.isEmpty()) Screen.handleOpenUri(client, this, URI.create(source));
+                return true;
+            }
+        }
         if (click.button() != 0 || click.y() < 69 || click.y() >= height - 42) return false;
         if (click.x() >= 7 && click.x() < split() - 5) {
             int index = ((int)click.y() - 69 + sectionScroll) / 26 - 1;

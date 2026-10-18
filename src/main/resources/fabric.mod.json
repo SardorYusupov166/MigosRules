@@ -4,5 +4,5 @@
  "description":"Справочник официальных правил MigosMC. Создан mlpgod для MigosMC.",
  "authors":["mlpgod"],"environment":"client",
  "entrypoints":{"chatsorter:rules":["dev.migosrules.RulesAddon"]},
- "depends":{"fabricloader":">=0.18.0","minecraft":"1.21.11","java":">=21","chatsorter":">=1.3.4"}
+ "depends":{"fabricloader":">=0.18.0","minecraft":"1.21.11","java":">=21","chatsorter":">=1.3.5"}
 }
